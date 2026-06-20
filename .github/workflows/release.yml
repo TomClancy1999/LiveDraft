@@ -1,0 +1,59 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      - name: Create versions or publish to npm registry
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          version: pnpm ci:version
+          commit: 'chore: version packages'
+          title: 'chore: version packages'
+          createGithubReleases: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Publish to NPM
+        run: pnpm ci:publish
+
+      - name: Get package version
+        run: |
+          MILKDOWN_VERSION=$(jq -r ".version" packages/kit/package.json)
+          echo "MILKDOWN_RELEASE_TAG=v${MILKDOWN_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub release
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
+        with:
+          commit: main
+          tag: '${{ env.MILKDOWN_RELEASE_TAG }}'
+          body: 'Please refer to [CHANGELOG.md](https://github.com/milkdown/milkdown/blob/${{ env.MILKDOWN_RELEASE_TAG }}/packages/kit/CHANGELOG.md) for details.'
+          token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
